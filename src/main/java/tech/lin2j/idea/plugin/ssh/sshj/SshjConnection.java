@@ -6,6 +6,7 @@ import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.common.IOUtils;
 import net.schmizz.sshj.connection.channel.direct.Session;
 import net.schmizz.sshj.sftp.FileAttributes;
+import net.schmizz.sshj.sftp.Response;
 import net.schmizz.sshj.sftp.SFTPClient;
 import net.schmizz.sshj.sftp.SFTPException;
 import net.schmizz.sshj.xfer.TransferListener;
@@ -46,6 +47,8 @@ public class SshjConnection implements SshConnection {
         this.clients = clients;
         this.sshClient = clients.getLast();
         this.sftpClient = sshClient.newSFTPClient();
+        this.sftpClient.getFileTransfer().setPreserveAttributes(false);
+
         if (ConfigHelper.isSCPTransferMode()) {
             scpFileTransfer = sshClient.newSCPFileTransfer();
         }
@@ -76,24 +79,24 @@ public class SshjConnection implements SshConnection {
             scpUpload(local, dest);
             return;
         }
-        log.debug("Upload file from local to remote directory");
+        log.debug("Upload [" + local + "] to remote [" + dest + "]");
         File localFile = new File(local);
-        if (localFile.exists() && localFile.canRead()) {
-            FileAttributes attr = null;
-            try {
-                attr = sftpClient.stat(dest);
-            } catch (SFTPException ignored) {
-                log.debug("no such remote file: " + dest);
-            }
-            if (attr == null) {
-                // remote directory not exist
-                mkdirs(dest);
-            }
-            sftpClient.put(local, dest);
-        } else {
+        if (!localFile.exists() || !localFile.canRead()) {
             throw new FileNotFoundException("local file not found: " + local);
         }
-
+        // Ensure remote destination directory exists
+        try {
+            sftpClient.stat(dest);
+        } catch (SFTPException e) {
+            if (e.getStatusCode() == Response.StatusCode.NO_SUCH_FILE) {
+                log.debug("Remote directory does not exist, creating: " + dest);
+                mkdirs(dest);
+            } else {
+                // Permission denied or other real errors — don't swallow
+                throw new IOException("Failed to stat remote path [" + dest + "]: " + e.getMessage(), e);
+            }
+        }
+        sftpClient.put(local, dest);
     }
 
     @Override
@@ -108,16 +111,33 @@ public class SshjConnection implements SshConnection {
     @Override
     public void scpUpload(String local, String dest) throws IOException {
         File localFile = new File(local);
-        if (localFile.exists() && localFile.canRead()) {
-            SshStatus checkFileExist = execute("ls " + dest);
-            if (!checkFileExist.isSuccess()) {
-                if (checkFileExist.getMessage().contains("No such file")) {
-                    execute("mkdir -p " + dest);
-                }
-            }
-            scpFileTransfer.upload(local, dest);
-        } else {
+        if (!localFile.exists() || !localFile.canRead()) {
             throw new FileNotFoundException("local file not found: " + local);
+        }
+
+        // Normalize dest: remove trailing slash to avoid double-slash in remote path
+        String normalizedDest = dest.endsWith("/") ? dest.substring(0, dest.length() - 1) : dest;
+
+        // Ensure destination directory exists
+        SshStatus checkDir = execute("ls " + normalizedDest);
+        if (!checkDir.isSuccess() && checkDir.getMessage().contains("No such file")) {
+            execute("mkdir -p " + normalizedDest);
+        }
+
+        // Upload to a temp file first to avoid "Text file busy" when the target
+        // is a running executable — mv replaces the inode atomically without
+        // disturbing the already-running process.
+        String fileName = localFile.getName();
+        String finalRemotePath = normalizedDest + "/" + fileName;
+        String tmpRemotePath   = normalizedDest + "/." + fileName + ".easy-deploy.tmp";
+
+        scpFileTransfer.upload(local, tmpRemotePath);
+
+        // Atomic rename to final path
+        SshStatus mv = execute("mv -f " + tmpRemotePath + " " + finalRemotePath);
+        if (!mv.isSuccess()) {
+            execute("rm -f " + tmpRemotePath);
+            throw new IOException("Uploaded to temp but failed to rename to [" + finalRemotePath + "]: " + mv.getMessage());
         }
     }
 

@@ -237,7 +237,8 @@
          on how to target different products -->
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
-    <depends>com.intellij.java</depends>
+    <!-- Java hot-reload is optional: works in IntelliJ IDEA, silently disabled in GoLand/PyCharm/etc. -->
+    <depends optional="true" config-file="plugin-java.xml">com.intellij.java</depends>
 <!--    <depends>com.intellij.modules.json</depends>-->
 
     <extensions defaultExtensionNs="com.intellij">
@@ -245,10 +246,6 @@
         <fileEditorProvider implementation="tech.lin2j.idea.plugin.ui.editor.SFTPEditorProvider"/>
         <projectService serviceImplementation="tech.lin2j.idea.plugin.ui.editor.SFTPFileSystem"/>
 
-        <applicationService
-                id="HotReloadService"
-                serviceInterface="tech.lin2j.idea.plugin.service.IHotReloadService"
-                serviceImplementation="tech.lin2j.idea.plugin.service.impl.HotReloadServiceImpl"/>
         <applicationService
                 id="SshjService"
                 serviceInterface="tech.lin2j.idea.plugin.service.ISshService"
@@ -263,13 +260,6 @@
     </applicationListeners>
 
     <actions>
-        <action
-                id="EasyDeploy.ClassHotReload"
-                class="tech.lin2j.idea.plugin.action.ClassHotReloadAction"
-                icon="MyIcons.EasyDeploy"
-                description="Remote class hot reload">
-            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="$Paste"/>
-        </action>
     </actions>
 
     <extensions defaultExtensionNs="com.intellij">

@@ -1,0 +1,19 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService
+                id="HotReloadService"
+                serviceInterface="tech.lin2j.idea.plugin.service.IHotReloadService"
+                serviceImplementation="tech.lin2j.idea.plugin.service.impl.HotReloadServiceImpl"/>
+    </extensions>
+
+    <actions>
+        <action
+                id="EasyDeploy.ClassHotReload"
+                class="tech.lin2j.idea.plugin.action.ClassHotReloadAction"
+                icon="MyIcons.EasyDeploy"
+                description="Remote class hot reload">
+            <add-to-group group-id="EditorPopupMenu" anchor="before" relative-to-action="$Paste"/>
+        </action>
+    </actions>
+</idea-plugin>
+

@@ -1,6 +1,8 @@
 package tech.lin2j.idea.plugin.service.impl;
 
 import net.schmizz.sshj.xfer.TransferListener;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import tech.lin2j.idea.plugin.file.filter.FileFilter;
 import tech.lin2j.idea.plugin.service.ISshService;
 import tech.lin2j.idea.plugin.ssh.CommandLog;
@@ -29,7 +31,7 @@ public class SshjSshService implements ISshService {
                 status = true;
             }
         } catch (Exception e) {
-            msg = e.getMessage();
+            msg = ExceptionUtils.getStackTrace(e);
         } finally {
             close(sshjConnection);
         }
@@ -43,7 +45,7 @@ public class SshjSshService implements ISshService {
             sshjConnection = SshConnectionManager.makeSshjConnection(sshServer);
             return sshjConnection.execute(command);
         } catch (Exception e) {
-            return new SshStatus(false, e.getMessage());
+            return new SshStatus(false, ExceptionUtils.getStackTrace(e));
         } finally {
             close(sshjConnection);
         }
@@ -57,7 +59,7 @@ public class SshjSshService implements ISshService {
             FutureTask<Void> task = sshjConnection.executeAsync(commandLog, command, true);
             commandLog.addTask(task);
         } catch (Exception e) {
-            commandLog.error(e.getMessage());
+            commandLog.error(ExceptionUtils.getStackTrace(e));
         }
     }
 
@@ -77,7 +79,7 @@ public class SshjSshService implements ISshService {
             sshjConnection.download(remoteFile, localFile);
             status = true;
         } catch (Exception e) {
-            msg = e.getMessage();
+            msg = ExceptionUtils.getStackTrace(e);
         } finally {
             close(sshjConnection);
         }
@@ -107,7 +109,7 @@ public class SshjSshService implements ISshService {
             }
         } catch (Exception e) {
             status.setSuccess(false);
-            status.setMessage(e.getMessage());
+            status.setMessage(ExceptionUtils.getStackTrace(e));
         } finally {
             close(sshjConnection);
         }
@@ -130,7 +132,7 @@ public class SshjSshService implements ISshService {
                 putFile(sshjConnection, filter, localFile, remoteDir);
             }
         } catch (Exception e) {
-            commandLog.error(e.getMessage());
+            commandLog.error(ExceptionUtils.getStackTrace(e));
             return false;
         }
         return true;
@@ -165,6 +167,8 @@ public class SshjSshService implements ISshService {
                 String localFullFileName = localFile + "/" + f;
                 if (new File(localFullFileName).isDirectory()) {
                     String remoteSubDir = remoteDstDir + "/" + f;
+                    // Ensure sub-directory exists on remote before recursing
+                    connection.mkdirs(remoteSubDir);
                     putDir(connection, filter, localFullFileName, remoteSubDir);
                 } else {
                     putFile(connection, filter, localFullFileName, remoteDstDir);
