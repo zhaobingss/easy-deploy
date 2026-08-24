@@ -2,7 +2,6 @@ package tech.lin2j.idea.plugin.action;
 
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.SearchTextField;
-import org.apache.commons.collections.CollectionUtils;
 import tech.lin2j.idea.plugin.model.ConfigHelper;
 import tech.lin2j.idea.plugin.ssh.SshServer;
 
@@ -41,7 +40,7 @@ public class ServerSearchKeyAdapter extends KeyAdapter {
     private void search(KeyEvent e) {
         List<SshServer> searchResult = new ArrayList<>();
         List<SshServer> serverInConfig = ConfigHelper.sshServers();
-        if (CollectionUtils.isEmpty(serverInConfig)) {
+        if (serverInConfig == null || serverInConfig.isEmpty()) {
             return;
         }
 

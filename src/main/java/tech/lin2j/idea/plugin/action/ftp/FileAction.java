@@ -1,7 +1,6 @@
 package tech.lin2j.idea.plugin.action.ftp;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import org.apache.commons.collections.CollectionUtils;
 import org.jetbrains.annotations.NotNull;
 import tech.lin2j.idea.plugin.action.NewUpdateThreadAction;
 import tech.lin2j.idea.plugin.file.TableFile;
@@ -27,7 +26,7 @@ public abstract class FileAction extends NewUpdateThreadAction {
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         List<TableFile> files = container.getSelectedFiles();
-        if (CollectionUtils.isEmpty(files)) {
+        if (files == null || files.isEmpty()) {
             return;
         }
         handle(files.get(0));

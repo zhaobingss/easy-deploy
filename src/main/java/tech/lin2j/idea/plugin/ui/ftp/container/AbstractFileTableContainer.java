@@ -15,7 +15,6 @@ import com.intellij.ui.TextFieldWithStoredHistory;
 import com.intellij.ui.table.JBTable;
 import com.intellij.util.PathUtil;
 import com.intellij.util.ui.JBUI;
-import org.apache.commons.collections.CollectionUtils;
 import tech.lin2j.idea.plugin.action.EnterKeyAdapter;
 import tech.lin2j.idea.plugin.action.SFTPTableMouseListener;
 import tech.lin2j.idea.plugin.action.ftp.CreateNewFolderAction;
@@ -119,7 +118,7 @@ public abstract class AbstractFileTableContainer extends SimpleToolWindowPanel i
 
     @Override
     public List<TableFile> getSelectedFiles() {
-        if (CollectionUtils.isEmpty(fileList)) {
+        if (fileList == null || fileList.isEmpty()) {
             return Collections.emptyList();
         }
         int[] rows = table.getSelectedRows();

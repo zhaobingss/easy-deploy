@@ -2,7 +2,6 @@ package tech.lin2j.idea.plugin.action.ftp;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import org.apache.commons.collections.CollectionUtils;
 import org.jetbrains.annotations.NotNull;
 import tech.lin2j.idea.plugin.action.NewUpdateThreadAction;
 import tech.lin2j.idea.plugin.file.TableFile;
@@ -38,7 +37,7 @@ public class DeleteFileAndDirAction extends NewUpdateThreadAction {
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         List<TableFile> selectedFiles = container.getSelectedFiles();
-        if (CollectionUtils.isEmpty(selectedFiles)) {
+        if (selectedFiles == null || selectedFiles.isEmpty()) {
             return;
         }
 

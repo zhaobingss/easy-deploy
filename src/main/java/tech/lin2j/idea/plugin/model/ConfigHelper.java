@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 /**
@@ -97,6 +98,18 @@ public class ConfigHelper {
         ensureConfigLoadInMemory();
         CONFIG_PERSISTENCE.getSshServers().add(sshServer);
         SSH_SERVER_MAP.put(sshServer.getId(), sshServer);
+    }
+
+    /**
+     * 一次性替换持久化配置中的主机顺序，避免逐项修改时保存到中间状态。
+     *
+     * <p>该方法没有返回值；调用方必须传入包含全部现有主机的新顺序，主机对象本身不会被复制或修改。</p>
+     *
+     * @param reorderedServers 按目标顺序排列的完整主机列表
+     */
+    public static void setSshServerOrder(List<SshServer> reorderedServers) {
+        ensureConfigLoadInMemory();
+        CONFIG_PERSISTENCE.setSshServers(new CopyOnWriteArrayList<>(reorderedServers));
     }
 
     public static void removeSshServer(SshServer sshServer) {

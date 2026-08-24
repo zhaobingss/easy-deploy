@@ -39,6 +39,7 @@ public class SshjConnection implements SshConnection {
     private final SshServer server;
     private final Deque<SSHClient> clients;
     private final SSHClient sshClient;
+    private final boolean scpTransferMode;
     private final SFTPClient sftpClient;
     private SCPFileTransfer scpFileTransfer;
 
@@ -46,11 +47,14 @@ public class SshjConnection implements SshConnection {
         this.server = server;
         this.clients = clients;
         this.sshClient = clients.getLast();
-        this.sftpClient = sshClient.newSFTPClient();
-        this.sftpClient.getFileTransfer().setPreserveAttributes(false);
+        this.scpTransferMode = ConfigHelper.isSCPTransferMode();
 
-        if (ConfigHelper.isSCPTransferMode()) {
-            scpFileTransfer = sshClient.newSCPFileTransfer();
+        if (scpTransferMode) {
+            this.sftpClient = null;
+            this.scpFileTransfer = sshClient.newSCPFileTransfer();
+        } else {
+            this.sftpClient = sshClient.newSFTPClient();
+            this.sftpClient.getFileTransfer().setPreserveAttributes(false);
         }
     }
 
@@ -58,10 +62,11 @@ public class SshjConnection implements SshConnection {
         if (transferListener == null) {
             return;
         }
-        sftpClient.getFileTransfer().setTransferListener(transferListener);
-        if (ConfigHelper.isSCPTransferMode()) {
+        if (scpTransferMode) {
             scpFileTransfer.setTransferListener(transferListener);
+            return;
         }
+        sftpClient.getFileTransfer().setTransferListener(transferListener);
     }
 
     public SSHClient getSshClient() {
@@ -75,7 +80,7 @@ public class SshjConnection implements SshConnection {
 
     @Override
     public void upload(String local, String dest) throws IOException {
-        if (ConfigHelper.isSCPTransferMode()) {
+        if (scpTransferMode) {
             scpUpload(local, dest);
             return;
         }
@@ -101,7 +106,7 @@ public class SshjConnection implements SshConnection {
 
     @Override
     public void download(String remote, String dest) throws IOException {
-        if (ConfigHelper.isSCPTransferMode()) {
+        if (scpTransferMode) {
             scpDownload(remote, dest);
             return;
         }
@@ -115,28 +120,24 @@ public class SshjConnection implements SshConnection {
             throw new FileNotFoundException("local file not found: " + local);
         }
 
-        // Normalize dest: remove trailing slash to avoid double-slash in remote path
-        String normalizedDest = dest.endsWith("/") ? dest.substring(0, dest.length() - 1) : dest;
+        // 标准化远程目录，避免后续拼接出重复斜杠。
+        String normalizedDest = normalizeRemoteDir(dest);
 
-        // Ensure destination directory exists
-        SshStatus checkDir = execute("ls " + normalizedDest);
-        if (!checkDir.isSuccess() && checkDir.getMessage().contains("No such file")) {
-            execute("mkdir -p " + normalizedDest);
-        }
+        // SCP 协议不会自动创建目标目录，上传临时文件前必须先创建目录。
+        mkdirs(normalizedDest);
 
-        // Upload to a temp file first to avoid "Text file busy" when the target
-        // is a running executable — mv replaces the inode atomically without
-        // disturbing the already-running process.
+        // 先上传到临时文件，避免覆盖正在运行的可执行文件时报 "Text file busy"。
+        // 上传完成后通过 mv 原子替换目标文件，正在运行的旧进程仍可继续使用旧 inode。
         String fileName = localFile.getName();
-        String finalRemotePath = normalizedDest + "/" + fileName;
-        String tmpRemotePath   = normalizedDest + "/." + fileName + ".easy-deploy.tmp";
+        String finalRemotePath = joinRemotePath(normalizedDest, fileName);
+        String tmpRemotePath = joinRemotePath(normalizedDest, "." + fileName + ".easy-deploy.tmp");
 
         scpFileTransfer.upload(local, tmpRemotePath);
 
-        // Atomic rename to final path
-        SshStatus mv = execute("mv -f " + tmpRemotePath + " " + finalRemotePath);
+        // 将临时文件原子重命名为最终文件；失败时清理临时文件，避免远端残留。
+        SshStatus mv = execute("mv -f " + shellQuote(tmpRemotePath) + " " + shellQuote(finalRemotePath));
         if (!mv.isSuccess()) {
-            execute("rm -f " + tmpRemotePath);
+            execute("rm -f " + shellQuote(tmpRemotePath));
             throw new IOException("Uploaded to temp but failed to rename to [" + finalRemotePath + "]: " + mv.getMessage());
         }
     }
@@ -237,7 +238,66 @@ public class SshjConnection implements SshConnection {
 
     @Override
     public void mkdirs(String dir) throws IOException {
+        if (scpTransferMode) {
+            SshStatus mkdir = execute("mkdir -p " + shellQuote(dir));
+            if (!mkdir.isSuccess()) {
+                throw new IOException("Failed to create remote directory [" + dir + "]: " + mkdir.getMessage());
+            }
+            return;
+        }
         sftpClient.mkdirs(dir);
+    }
+
+    /**
+     * 标准化 SCP 目标目录。
+     *
+     * <p>函数作用：移除普通目录末尾的斜杠，避免拼接出 "/opt/app//file.jar"
+     * 这类重复斜杠路径；同时保留根目录 "/"，因为空字符串不能作为有效的
+     * mkdir 目标目录或远程路径前缀。</p>
+     *
+     * @param dir 上传配置中的远程目录，允许为空或根目录
+     * @return 标准化后的远程目录；根目录会原样返回 "/"
+     */
+    private static String normalizeRemoteDir(String dir) {
+        if (dir == null || dir.isEmpty() || "/".equals(dir)) {
+            return "/";
+        }
+        return dir.endsWith("/") ? dir.substring(0, dir.length() - 1) : dir;
+    }
+
+    /**
+     * 拼接远程目录和远程文件名。
+     *
+     * <p>函数作用：根据标准化后的远程目录生成 SCP 最终目标路径。
+     * 当目录是根目录 "/" 时直接返回 "/文件名"；普通目录则返回
+     * "目录/文件名"，避免出现双斜杠。</p>
+     *
+     * @param dir 标准化后的远程目录，通常来自 {@link #normalizeRemoteDir(String)}
+     * @param fileName 需要放到远程目录下的文件名
+     * @return 拼接完成的远程文件路径
+     */
+    private static String joinRemotePath(String dir, String fileName) {
+        if ("/".equals(dir)) {
+            return "/" + fileName;
+        }
+        return dir + "/" + fileName;
+    }
+
+    /**
+     * 为 POSIX 兼容的远端 shell 命令转义单个参数。
+     *
+     * <p>函数作用：把任意路径字符串转换成一个安全的 shell 参数，
+     * 确保空格、单引号和 shell 元字符会按字面量传给远端命令，
+     * 不会被远端 shell 当作语法解析。</p>
+     *
+     * @param value 准备发送给远端 shell 的原始参数值
+     * @return 转义后的 shell 参数；当入参为 null 或空字符串时返回 "''"
+     */
+    private static String shellQuote(String value) {
+        if (value == null || value.isEmpty()) {
+            return "''";
+        }
+        return "'" + value.replace("'", "'\"'\"'") + "'";
     }
 
     @Override

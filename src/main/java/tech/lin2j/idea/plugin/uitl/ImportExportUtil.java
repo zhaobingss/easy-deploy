@@ -1,7 +1,6 @@
 package tech.lin2j.idea.plugin.uitl;
 
 import com.google.gson.GsonBuilder;
-import org.apache.commons.collections.CollectionUtils;
 import tech.lin2j.idea.plugin.model.Command;
 import tech.lin2j.idea.plugin.model.ConfigHelper;
 import tech.lin2j.idea.plugin.model.ConfigImportExport;
@@ -39,7 +38,7 @@ public class ImportExportUtil {
         }
 
         List<SshServer> sshServers = ConfigHelper.sshServers();
-        if (CollectionUtils.isEmpty(sshServers)) {
+        if (sshServers == null || sshServers.isEmpty()) {
             return dto;
         }
 
@@ -106,7 +105,9 @@ public class ImportExportUtil {
             ConfigHelper.addSshServer(newSever);
             sshIdMap.put(oldSshId, newSshId);
             // command
-            if (options.isCommand() && CollectionUtils.isNotEmpty(hostInfo.getCommands())) {
+            if (options.isCommand()
+                    && hostInfo.getCommands() != null
+                    && !hostInfo.getCommands().isEmpty()) {
                 hostInfo.getCommands().forEach(newCmd -> {
                     int oldCmdId = newCmd.getId();
                     int newCmdId = ConfigHelper.maxCommandId() + 1;
@@ -118,7 +119,9 @@ public class ImportExportUtil {
                 });
             }
             // upload profile
-            if (options.isUploadProfile() && CollectionUtils.isNotEmpty(hostInfo.getUploadProfiles())) {
+            if (options.isUploadProfile()
+                    && hostInfo.getUploadProfiles() != null
+                    && !hostInfo.getUploadProfiles().isEmpty()) {
                 hostInfo.getUploadProfiles().forEach(newProfile -> {
                     newProfile.setId(ConfigHelper.maxUploadProfileId() + 1);
                     newProfile.setSshId(newSshId);

@@ -21,6 +21,7 @@ import javax.swing.JPopupMenu;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * @author linjinjia
@@ -51,6 +52,11 @@ public class HostMoreOpsAction implements ActionListener {
                 new HostSettingsDialog(project, server).show();
             }
         }));
+
+        String copyText = MessagesBundle.getText("table.action.button.more.copy");
+        JMenuItem copyItem = new JMenuItem(copyText);
+        copyItem.addActionListener(event -> copyHost());
+        menu.add(copyItem);
 
         String sftpText = MessagesBundle.getText("table.action.button.more.sftp");
         menu.add(new JMenuItem(new AbstractAction(sftpText) {
@@ -83,5 +89,20 @@ public class HostMoreOpsAction implements ActionListener {
             }
         }));
         menu.show(parent, 0, parent.getHeight());
+    }
+
+    /**
+     * 复制当前“更多”菜单所对应的主机配置，并将副本加入主机列表。
+     *
+     * <p>该方法不接收参数，也不返回值。副本保留连接、认证、标签、代理和描述等主机字段，
+     * 但会重新分配数值 ID 与全局唯一 UID，避免覆盖原主机。命令和上传配置不属于主机字段，
+     * 因此不会随主机一起复制。完成后发布表格刷新事件，使新主机立即显示在列表中。</p>
+     */
+    private void copyHost() {
+        SshServer copy = ConfigHelper.getSshServerById(sshId).clone();
+        copy.setId(ConfigHelper.maxSshServerId() + 1);
+        copy.setUid(UUID.randomUUID().toString());
+        ConfigHelper.addSshServer(copy);
+        ApplicationContext.getApplicationContext().publishEvent(new TableRefreshEvent());
     }
 }
